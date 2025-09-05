@@ -1,0 +1,53 @@
+name: Build and Push to GCP Artifact Registry
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  PROJECT_ID:  staging-462001
+  SERVICE_ACCOUNT: stg-artifact-registry-pusher@wif-pool-01.iam.gserviceaccount.com
+  WORKLOAD_IDENTITY_PROVIDER: projects/301778644895/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions-provider
+  ARTIFACT_REGISTRY_HOST: asia-southeast1-docker.pkg.dev
+  ARTIFACT_REGISTRY_REPO: vllm-openai-audio
+  IMAGE_NAME: vllm-openai-audio
+  IMAGE_VERSION: v0.10.1.1
+
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v1
+      with:
+        workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+        service_account: ${{ env.SERVICE_ACCOUNT }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+
+    - name: Build Docker image
+      run: |
+        docker build -t ${{ env.IMAGE_NAME }}:${{ env.IMAGE_VERSION }} .
+
+    - name: Tag and push to Artifact Registry
+      run: |
+        FULL_IMAGE_NAME=${{ env.ARTIFACT_REGISTRY_HOST }}/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_VERSION }}
+        
+        gcloud auth configure-docker ${{ env.ARTIFACT_REGISTRY_HOST }} --quiet
+        
+        docker tag ${{ env.IMAGE_NAME }}:${{ env.IMAGE_VERSION }} $FULL_IMAGE_NAME
+        docker push $FULL_IMAGE_NAME
